@@ -653,11 +653,11 @@
       renderAgenda();
     }
 
-    function renderAgenda() {
+   function renderAgenda() {
       const dataSel = document.getElementById('agendaData').value;
       const modo = document.getElementById('agendaModo').value;
       const entidades = modo === 'professor' ? STATE.professores : STATE.salas;
-      const aulasDia = STATE.agenda.filter(a => a.Data === dataSel && a.StatusPresenca !== 'Cancelada');
+      const aulasDia = STATE.agenda.filter(a => String(a.Data).trim() === dataSel && a.StatusPresenca !== 'Cancelada');
 
       document.getElementById('agendaThead').innerHTML = `
         <tr>
@@ -670,20 +670,38 @@
         return;
       }
 
-      document.getElementById('agendaTbody').innerHTML = entidades.map(ent => `
+      document.getElementById('agendaTbody').innerHTML = entidades.map(ent => {
+        const entId = String(ent.ID || '').trim();
+        const entNome = String(ent.Nome || '').trim().toLowerCase();
+
+        return `
         <tr class="h-24">
           <td class="p-3 border-r bg-slate-50 font-semibold text-slate-700 align-top">
             <div>${ent.Nome}</div>
             <div class="text-xs font-normal text-slate-400">${modo === 'professor' ? ent.Instrumentos : 'Cap: ' + ent.Capacidade}</div>
           </td>
           ${HORARIOS_GRADE.map(h => {
-            const aula = aulasDia.find(a => a.HoraInicio.startsWith(h.slice(0, 2)) && (modo === 'professor' ? a.ProfessorID === ent.ID : a.SalaID === ent.ID));
+            const aula = aulasDia.find(a => {
+              const horaMatch = String(a.HoraInicio || '').padStart(5, '0').startsWith(h.slice(0, 2));
+              if (!horaMatch) return false;
+
+              if (modo === 'professor') {
+                return String(a.ProfessorID || '').trim() === entId ||
+                       String(a.ProfessorNome || '').trim().toLowerCase() === entNome;
+              } else {
+                return String(a.SalaID || '').trim() === entId ||
+                       String(a.SalaNome || '').trim().toLowerCase() === entNome;
+              }
+            });
+
             if (!aula) {
-              return `<td onclick="abrirModalAula(null, '${ent.ID}', '${h}', '${modo}')" class="grid-cell border-r p-1 align-top text-[10px] text-slate-300 text-center pt-8">${h}</td>`;
+              return `<td onclick="abrirModalAula(null, '${entId}', '${h}', '${modo}')" class="grid-cell border-r p-1 align-top text-[10px] text-slate-300 text-center pt-8">${h}</td>`;
             }
+
             const cor = aula.StatusPresenca === 'Presente' ? 'bg-emerald-50 border-emerald-500 text-emerald-900'
                       : aula.EhReposicao === 'Sim' ? 'bg-amber-50 border-amber-500 text-amber-900'
                       : 'bg-indigo-50 border-indigo-600 text-indigo-900';
+
             return `
               <td class="border-r p-1 align-top">
                 <div onclick="abrirModalAula('${aula.ID}')" class="aula-card cursor-pointer rounded-md border-l-4 p-1.5 text-xs h-full ${cor}">
@@ -696,9 +714,9 @@
                 </div>
               </td>`;
           }).join('')}
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
     }
-
     function abrirModalAula(id = null, entId = null, hora = null, modo = null) {
       document.getElementById('aulaAluno').innerHTML =
         `<option value="TURMA">Turma / Grupo</option>` +
@@ -734,11 +752,15 @@
       document.getElementById('modalAula').classList.remove('hidden');
     }
 
-    async function submitAula(e) {
+async function submitAula(e) {
       e.preventDefault();
-      const alunoSel = STATE.alunos.find(a => a.ID === document.getElementById('aulaAluno').value);
-      const profSel = STATE.professores.find(p => p.ID === document.getElementById('aulaProf').value);
-      const salaSel = STATE.salas.find(s => s.ID === document.getElementById('aulaSala').value);
+      const alunoVal = String(document.getElementById('aulaAluno').value).trim();
+      const profVal = String(document.getElementById('aulaProf').value).trim();
+      const salaVal = String(document.getElementById('aulaSala').value).trim();
+
+      const alunoSel = STATE.alunos.find(a => String(a.ID).trim() === alunoVal);
+      const profSel = STATE.professores.find(p => String(p.ID).trim() === profVal);
+      const salaSel = STATE.salas.find(s => String(s.ID).trim() === salaVal);
 
       setLoading(true);
       try {
@@ -750,9 +772,9 @@
           TipoAula: document.getElementById('aulaTipo').value,
           AlunoID: alunoSel ? alunoSel.ID : 'TURMA',
           AlunoNome: alunoSel ? alunoSel.Nome : 'Turma / Grupo',
-          ProfessorID: profSel ? profSel.ID : '',
+          ProfessorID: profSel ? profSel.ID : profVal,
           ProfessorNome: profSel ? profSel.Nome : '',
-          SalaID: salaSel ? salaSel.ID : '',
+          SalaID: salaSel ? salaSel.ID : salaVal,
           SalaNome: salaSel ? salaSel.Nome : '',
           Instrumento: document.getElementById('aulaInstrumento').value,
           StatusPresenca: document.getElementById('aulaStatus').value,
@@ -767,7 +789,6 @@
         toast(err.message, true);
       }
     }
-
     async function deletarAula() {
       const id = document.getElementById('aulaId').value;
       if (!confirm('Deseja excluir esta aula?')) return;
